@@ -1,5 +1,5 @@
 import WebSocket from 'ws';
-import { User } from './types';
+import { AuthData, Message, MessageType, RegResponse, User } from './types';
 
 
 export class GameServer {
@@ -17,9 +17,12 @@ export class GameServer {
       return;
     }
 
-    this.webSocketServer = new WebSocket.Server(
-      {port: this.port},
-      () => console.log(`WebSockets server has just been started on port ${this.port}`)
+    this.webSocketServer = new WebSocket.Server({
+        port: this.port
+      },
+      () => {
+        console.log(`WebSockets server has just been started on port ${this.port}`);
+      }
     );
 
     this.isStarted = true;
@@ -33,9 +36,49 @@ export class GameServer {
 
   private processClientMessage(client: WebSocket.WebSocket, message: WebSocket.RawData): void {
     try {
-      const messageRawParsed = JSON.parse(message.toString());
+      const messageRawParsed: Message = JSON.parse(message.toString());
+
+      switch (messageRawParsed.type) {
+        case 'reg': {
+          const data: AuthData = JSON.parse(messageRawParsed.data);
+          this.processReg(data, client)
+        }
+      }
     } catch {
 
     }
+  }
+
+  private static getUserPk(name: string, password: string): string {
+    return name + password;
+  }
+  private processReg(messageData: AuthData, client: WebSocket.WebSocket): void {
+    const userPk = GameServer.getUserPk(messageData.name, messageData.password);
+
+    if (!this.users.has(userPk)) {
+      const newUser: User = {
+        ...messageData,
+        index: this.users.size
+      };
+
+      this.users.set(userPk, newUser);
+    }
+
+    const user = this.users.get(userPk);
+
+    const responseData: RegResponse = {
+      name: user.name,
+      index: user.index,
+      error: false,
+      errorText: ''
+    };
+
+    const response: Message = {
+      type: 'reg',
+      data: JSON.stringify(responseData),
+      id: 0
+    };
+
+    client.send(JSON.stringify(response));
   }
 }

@@ -8,8 +8,8 @@ const main = (): void => {
   const gameWebSocketServer = new GameServer(WS_PORT);
   gameWebSocketServer.runServer();
 
-  httpServer.listen(HTTP_PORT, (): void => {
-    console.log(`Start static http server on the ${HTTP_PORT} port!`);
+  httpServer.listen(HTTP_PORT, () => {
+    console.log(`HTTP server has just been started on port ${HTTP_PORT}`);
   });
 };
 
