@@ -1,10 +1,11 @@
 import WebSocket from 'ws';
-import { AuthData, Message, MessageType, RegResponse, User } from './types';
+import { AuthData, Message, MessageType, RegResponseData, User } from './types';
+import { uuidv4 } from './utils';
 
 
 export class GameServer {
   private readonly users: Map<string, User> = new Map<string, User>();
-  private readonly connections: Map<any, any> = new Map<any, any>();
+  private readonly connections: Map<string, WebSocket.WebSocket> = new Map<string, WebSocket.WebSocket>();
   private webSocketServer: WebSocket.Server;
   private isStarted: boolean = false;
 
@@ -28,8 +29,19 @@ export class GameServer {
     this.isStarted = true;
 
     this.webSocketServer.on('connection', (client: WebSocket.WebSocket): void => {
+      const id = uuidv4();
+      this.connections.set(id, client);
+
+      client.on('connection', () => {
+        console.log(`New client connected. Gave him ID: ${id}`);
+      });
+
       client.on('message', (message): void => {
         this.processClientMessage(client, message);
+      });
+
+      client.on('close', () => {
+        this.connections.delete(id);
       });
     });
   }
@@ -41,7 +53,9 @@ export class GameServer {
       switch (messageRawParsed.type) {
         case 'reg': {
           const data: AuthData = JSON.parse(messageRawParsed.data);
-          this.processReg(data, client)
+          this.processReg(data, client);
+          this.updateWinners();
+          break;
         }
       }
     } catch {
@@ -58,7 +72,8 @@ export class GameServer {
     if (!this.users.has(userPk)) {
       const newUser: User = {
         ...messageData,
-        index: this.users.size
+        index: this.users.size,
+        wins: 0
       };
 
       this.users.set(userPk, newUser);
@@ -66,19 +81,41 @@ export class GameServer {
 
     const user = this.users.get(userPk);
 
-    const responseData: RegResponse = {
+    const responseRegData: RegResponseData = {
       name: user.name,
       index: user.index,
       error: false,
       errorText: ''
     };
 
-    const response: Message = {
+    const responseReg: Message = {
       type: 'reg',
-      data: JSON.stringify(responseData),
+      data: JSON.stringify(responseRegData),
       id: 0
     };
 
-    client.send(JSON.stringify(response));
+    client.send(JSON.stringify(responseReg));
+  }
+
+  private updateWinners(): void {
+    if (!this.webSocketServer) {
+      return;
+    }
+
+    const responseUpdateData = [...this.users.values()].map(({name, wins}) => ({
+      name, wins
+    }));
+
+    const responseUpdate: Message = {
+      type: 'update_winners',
+      data: JSON.stringify(responseUpdateData),
+      id: 0
+    };
+
+    const stringified = JSON.stringify(responseUpdate);
+
+    this.webSocketServer.clients.forEach(client => {
+      client.send(stringified);
+    });
   }
 }
