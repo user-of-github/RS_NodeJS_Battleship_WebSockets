@@ -67,8 +67,8 @@ export class GameServer {
         case 'reg': {
           const data: AuthData = JSON.parse(messageRawParsed.data);
           this.processReg(data, client);
-          this.updateWinners();
           this.sendFreeRooms();
+          this.updateWinners();
           break;
         }
         case 'create_room': {
@@ -78,6 +78,7 @@ export class GameServer {
         }
         case 'add_user_to_room': {
           const data: AddToRoomData = JSON.parse(messageRawParsed.data);
+          console.log(data)
           const roomIndex = this.addToRoom(client as WithUserIndex, data);
           this.sendFreeRooms();
           this.createGame(roomIndex);
@@ -160,7 +161,7 @@ export class GameServer {
 
     const newRoom: Room = {
       roomUsers: [{name: currentUser.name, index: currentUser.index}],
-      index: this.roomsIdCounter++
+      roomId: this.roomsIdCounter++
     };
 
     this.rooms.push(newRoom);
@@ -169,7 +170,7 @@ export class GameServer {
   private addToRoom(client: WithUserIndex, data: AddToRoomData): number {
      const { indexRoom } = data;
 
-    const index = this.rooms.findIndex(r => r.index === indexRoom);
+    const index = this.rooms.findIndex(r => r.roomId === indexRoom);
 
     if (index < 0) {
       throw Error('addToRoom: index not found');
@@ -207,6 +208,7 @@ export class GameServer {
   }
 
   private createGame(roomIndex: number) {
+    console.log(`creating game ${roomIndex}`)
     const id = uuidv4();
     const player1 = this.rooms[roomIndex].roomUsers[0].index;
     const player2 = this.rooms[roomIndex].roomUsers[1].index;
@@ -227,8 +229,17 @@ export class GameServer {
     const player1Client = this.findClient(player1);
     const player2Client = this.findClient(player2);
 
-    player1Client?.send(json);
-    player2Client?.send(json)
+    if (player1Client) {
+      player1Client.send(json);
+    } else {
+      console.error('Didnt find player1Client');
+    }
+
+    if (player2Client) {
+      player2Client.send(json);
+    } else {
+      console.error('Didnt find player1Client');
+    }
   }
 
   private findClient(index: number): WebSocket.WebSocket | undefined {

@@ -20,7 +20,7 @@ export interface User extends AuthData {
 export type UserInRoom = Pick<User, 'index'> & Pick<AuthData, 'name'>;
 export interface Room {
   roomUsers: UserInRoom[];
-  index: number;
+  roomId: number;
 }
 
 export interface AddToRoomData {
