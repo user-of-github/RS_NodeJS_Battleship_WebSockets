@@ -1,10 +1,10 @@
 import WebSocket from 'ws';
 import {WithId, WithUserIndex } from './types/utility';
 import { uuidv4 } from './utils';
-import {AddToRoomData, AuthData, Game, Room, User} from './types/domain';
+import {AddToRoomData, AttackStatus, AuthData, Game, PlayerInGame, Room, User} from './types/domain';
 import {
-  AddShipsRequestData,
-  CreateGameResponseData,
+  AddShipsRequestData, AttackRequestData, AttackResponseData,
+  CreateGameResponseData, CurrentTurnResponse,
   Message,
   RegResponseData,
   StartGameResponse
@@ -14,6 +14,7 @@ import {
 export class GameServer {
   private usersIdCounter: number = 0;
   private roomsIdCounter: number = 0;
+  private gamesIdCounter: number = 0;
 
   private readonly users: User[] = [];
   private readonly rooms: Room[] = [];
@@ -87,7 +88,14 @@ export class GameServer {
           if (this.games[gameIndex].players.every(p => p.ships.length !== 0)) {
             console.log('STARTING GAME')
             this.startGame(gameIndex);
+            this.switchTurn(gameIndex);
           }
+          break;
+        }
+        case "attack": {
+          const data: AttackRequestData = JSON.parse(messageRawParsed.data);
+          const gameIndex= this.attack(data);
+          this.switchTurn(gameIndex);
           break;
         }
       }
@@ -214,7 +222,7 @@ export class GameServer {
 
   private createGame(roomIndex: number) {
     console.log(`creating game ${roomIndex}`)
-    const id = uuidv4();
+    const id = this.gamesIdCounter++;
     const player1 = this.rooms[roomIndex].roomUsers[0].index;
     const player2 = this.rooms[roomIndex].roomUsers[1].index;
 
@@ -226,7 +234,8 @@ export class GameServer {
       }, {
         index: player2,
         ships: []
-      }]
+      }],
+      turn: player1
     });
 
 
@@ -265,7 +274,10 @@ export class GameServer {
       throw Error();
     }
 
-    this.games[gameIndex].players[playerIndex].ships.push(...data.ships);
+    this.games[gameIndex].players[playerIndex].ships.push(...data.ships.map(ship => ({
+      ...ship,
+      aliveCells: new Array(ship.length).fill(true)
+    })));
 
     return gameIndex;
   }
@@ -288,6 +300,98 @@ export class GameServer {
         data: JSON.stringify(data)
       };
 
+      client.send(JSON.stringify(message));
+    });
+  }
+
+  private attack(data: AttackRequestData): number {
+    const gameIndex = this.gameIndexById(data.gameId);
+
+    if (gameIndex < 0) {
+      throw Error('attack: game not found');
+    }
+
+    const game = this.games[gameIndex];
+
+    const enemyIndex = game.players[0].index === data.indexPlayer ? 1 : 0;
+    const attackStatus = this.detectAttackStatus(game.players[enemyIndex], data.x, data.y);
+
+    game.players.forEach(player => {
+      const client = this.findClient(player.index);
+
+      if (!client) {
+        throw Error('createGame: client not found');
+      }
+
+      const attackResponseData: AttackResponseData = {position: {x: data.x, y: data.y}, status: attackStatus, currentPlayer: player.index}; // TODO ? for every player its or just attackers id for both ?
+      const message: Message = {type: 'attack', id: 0, data: JSON.stringify(attackResponseData)};
+      client.send(JSON.stringify(message));
+    });
+
+
+    return gameIndex;
+  }
+
+  private detectAttackStatus(playerInGame: PlayerInGame, attackX: number, attackY: number): AttackStatus {
+    for (const ship of playerInGame.ships) {
+      if (!(ship.position.x === attackX || ship.position.y === attackY)) {
+        continue;
+      }
+
+      if (ship.direction && ship.position.x === attackX) { // vertical
+        for (let y = ship.position.y; y < ship.position.y + ship.length; ++y) {
+          if (y === attackY) {
+            ship.aliveCells[y - ship.position.y] = false;
+
+            if (ship.aliveCells.every(cell => !cell)) {
+              return 'killed';
+            } else {
+              return 'shot';
+            }
+          }
+        }
+      } else if (!ship.direction && ship.position.y === attackY) {
+        for (let x = ship.position.x; x < ship.position.x + ship.length; ++x) {
+          if (x === attackX) {
+            ship.aliveCells[x - ship.position.x] = false;
+
+            if (ship.aliveCells.every(cell => !cell)) {
+              return 'killed';
+            } else {
+              return 'shot';
+            }
+          }
+        }
+      }
+    }
+
+    return 'miss';
+  }
+
+  private gameIndexById(id: number) {
+    return this.games.findIndex(game => game.id === id);
+  }
+
+  private switchTurn(gameIndex: number): void {
+    const currentTurn = this.games[gameIndex].turn;
+    // Sorry for such if :)
+    if (currentTurn === this.games[gameIndex].players[0].index) {
+      this.games[gameIndex].turn = this.games[gameIndex].players[1].index;
+    } else if (currentTurn === this.games[gameIndex].players[1].index) {
+      this.games[gameIndex].turn = this.games[gameIndex].players[0].index;
+    }
+
+    const newTurn = this.games[gameIndex].turn;
+
+    this.games[gameIndex].players.forEach(player => {
+      const client = this.findClient(player.index);
+
+      if (!client) {
+        throw Error('createGame: client not found');
+      }
+
+      const turnResponseData: CurrentTurnResponse = {currentPlayer: newTurn};
+      const message: Message = {type: 'turn', id: 0, data: JSON.stringify(turnResponseData)};
       client.send(JSON.stringify(message));
     });
   }

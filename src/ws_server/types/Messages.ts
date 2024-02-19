@@ -1,4 +1,4 @@
-import {Ship, User} from './domain';
+import {AttackStatus, Position, Ship, User} from './domain';
 
 
 export type MessageType = 'reg' | 'create_room' | 'add_user_to_room' | 'create_game' | 'add_ships' | 'start_game' | 'turn' | 'attack' | 'randomAttack' | 'finish' | 'update_room' | 'update_winners';
@@ -15,17 +15,35 @@ export interface RegResponseData extends Omit<User, 'password' | 'wins'> {
 }
 
 export interface CreateGameResponseData {
-    idGame: string;
-    idPlayer: number;
+    readonly idGame: number;
+    readonly idPlayer: number;
 }
 
 export interface AddShipsRequestData {
-    gameId: string;
-    ships: Ship[];
-    indexPlayer: number;
+    readonly gameId: number;
+    readonly ships: Ship[];
+    readonly indexPlayer: number;
 }
 
 export interface StartGameResponse {
-    ships: Ship[];
-    currentPlayerIndex: number;
+    readonly ships: Ship[];
+    readonly currentPlayerIndex: number;
+}
+
+export interface AttackRequestData {
+    readonly gameId: number;
+    readonly x: number;
+    readonly y: number;
+    readonly indexPlayer: number;
+}
+
+export interface AttackResponseData {
+    readonly position: Position;
+    readonly currentPlayer: number;
+    status: AttackStatus;
+}
+
+
+export interface CurrentTurnResponse {
+    readonly currentPlayer: number;
 }

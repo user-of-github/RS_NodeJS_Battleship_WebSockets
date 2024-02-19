@@ -10,7 +10,7 @@ export interface User extends AuthData {
 export type UserInRoom = Pick<User, 'index'> & Pick<AuthData, 'name'>;
 export interface Room {
     roomUsers: UserInRoom[];
-    roomId: number;
+    readonly roomId: number;
 }
 
 export interface AddToRoomData {
@@ -25,17 +25,21 @@ export interface Position {
 export type ShipSize = 'small' | 'medium' | 'large' | 'huge';
 
 export interface Ship {
-    position: Position;
-    direction: boolean;
-    length: number;
-    type: ShipSize;
+    readonly position: Position;
+    readonly direction: boolean;
+    readonly length: number;
+    readonly type: ShipSize;
+    aliveCells: boolean[];
 }
 
 export interface PlayerInGame {
-    index: number;
+    readonly index: number;
     ships: Ship[];
 }
 export interface Game {
-    readonly id: string;
+    readonly id: number;
     readonly players: [PlayerInGame, PlayerInGame];
+    turn: number;
 }
+
+export type AttackStatus = 'miss' | 'killed' | 'shot';
