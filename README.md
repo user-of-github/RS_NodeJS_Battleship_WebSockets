@@ -11,13 +11,13 @@
 
 `npm run start:dev`
 
-* App served @ `http://localhost:8181` with TSX
+* App served @ `http://localhost:8181` with TS-NODE-DEV
 
 **Production**
 
 `npm run start`
 
-* App served @ `http://localhost:8181` without TSX
+* App served @ `http://localhost:8181` with TSX
 
 ---
 
@@ -25,7 +25,7 @@
 
 Command | Description
 --- | ---
-`npm run start:dev` | App served @ `http://localhost:8181` with TSX
-`npm run start` | App served @ `http://localhost:8181` just with TS-NODE
+`npm run start:dev` | App served @ `http://localhost:8181` with TS-NODE-DEV
+`npm run start` | App served @ `http://localhost:8181` just with TSX
 
 **Note**: replace `npm` with `yarn` in `package.json` if you use yarn.
