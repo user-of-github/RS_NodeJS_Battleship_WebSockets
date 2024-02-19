@@ -53,6 +53,10 @@ export class GameServer {
       client.on('message', (message): void => {
         this.processClientMessage(client, message);
       });
+
+      client.on('close', () => {
+
+      });
     });
   }
 
@@ -94,8 +98,10 @@ export class GameServer {
         }
         case "attack": {
           const data: AttackRequestData = JSON.parse(messageRawParsed.data);
-          const gameIndex= this.attack(data);
-          this.switchTurn(gameIndex);
+          const {gameIndex, status }= this.attack(data);
+          if (status === 'miss') {
+            this.switchTurn(gameIndex);
+          }
           break;
         }
       }
@@ -304,11 +310,15 @@ export class GameServer {
     });
   }
 
-  private attack(data: AttackRequestData): number {
+  private attack(data: AttackRequestData): { gameIndex: number, status: AttackStatus } {
     const gameIndex = this.gameIndexById(data.gameId);
 
     if (gameIndex < 0) {
       throw Error('attack: game not found');
+    }
+
+    if (data.indexPlayer !== this.games[gameIndex].turn) {
+      return { gameIndex: gameIndex, status: 'miss'};
     }
 
     const game = this.games[gameIndex];
@@ -323,13 +333,13 @@ export class GameServer {
         throw Error('createGame: client not found');
       }
 
-      const attackResponseData: AttackResponseData = {position: {x: data.x, y: data.y}, status: attackStatus, currentPlayer: player.index}; // TODO ? for every player its or just attackers id for both ?
+      const attackResponseData: AttackResponseData = {position: {x: data.x, y: data.y}, status: attackStatus, currentPlayer: data.indexPlayer}; // TODO ? for every player its or just attackers id for both ?
       const message: Message = {type: 'attack', id: 0, data: JSON.stringify(attackResponseData)};
       client.send(JSON.stringify(message));
     });
 
 
-    return gameIndex;
+    return { gameIndex: gameIndex, status: attackStatus};
   }
 
   private detectAttackStatus(playerInGame: PlayerInGame, attackX: number, attackY: number): AttackStatus {
@@ -373,6 +383,10 @@ export class GameServer {
   }
 
   private switchTurn(gameIndex: number): void {
+    if (gameIndex === -1) {
+      return;
+    }
+
     const currentTurn = this.games[gameIndex].turn;
     // Sorry for such if :)
     if (currentTurn === this.games[gameIndex].players[0].index) {
@@ -394,5 +408,9 @@ export class GameServer {
       const message: Message = {type: 'turn', id: 0, data: JSON.stringify(turnResponseData)};
       client.send(JSON.stringify(message));
     });
+  }
+
+  private removeUserAndItsData(client: WebSocket.WebSocket): void {
+    // TODO: to implement
   }
 }

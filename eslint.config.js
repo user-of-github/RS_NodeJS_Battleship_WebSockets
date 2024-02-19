@@ -23,7 +23,9 @@ module.exports = [{
       SwitchCase: 1
     }],
     quotes: ['error', 'single'],
-    semi: ['error', 'always']
+    semi: ['error', 'always'],
+    '@stylistic/ts/max-len': ["error", { "code": 125 }],
+    'max-len': ["error", { "code": 125 }],
   },
 
   ignores: [
