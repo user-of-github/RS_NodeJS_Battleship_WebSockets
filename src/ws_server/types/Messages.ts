@@ -24,3 +24,8 @@ export interface AddShipsRequestData {
     ships: Ship[];
     indexPlayer: number;
 }
+
+export interface StartGameResponse {
+    ships: Ship[];
+    currentPlayerIndex: number;
+}

@@ -2,7 +2,13 @@ import WebSocket from 'ws';
 import {WithId, WithUserIndex } from './types/utility';
 import { uuidv4 } from './utils';
 import {AddToRoomData, AuthData, Game, Room, User} from './types/domain';
-import {AddShipsRequestData, CreateGameResponseData, Message, RegResponseData} from './types/Messages';
+import {
+  AddShipsRequestData,
+  CreateGameResponseData,
+  Message,
+  RegResponseData,
+  StartGameResponse
+} from './types/Messages';
 
 
 export class GameServer {
@@ -79,6 +85,7 @@ export class GameServer {
           const data: AddShipsRequestData = JSON.parse(messageRawParsed.data);
           const gameIndex = this.addShips(data);
           if (this.games[gameIndex].players.every(p => p.ships.length !== 0)) {
+            console.log('STARTING GAME')
             this.startGame(gameIndex);
           }
           break;
@@ -222,31 +229,21 @@ export class GameServer {
       }]
     });
 
-    const data: CreateGameResponseData = {
-      idGame: id,
-      idPlayer: player2
-    };
-
-    const message: Message = {
-      type: 'create_game', id: 0, data: JSON.stringify(data)
-    };
-
-    const json = JSON.stringify(message);
 
     const player1Client = this.findClient(player1);
     const player2Client = this.findClient(player2);
 
-    if (player1Client) {
-      player1Client.send(json);
-    } else {
-      console.error('Didnt find player1Client');
-    }
+    [player1Client, player2Client].forEach(client => {
+      if (!client) {
+        throw Error('createGame: client not found');
+      }
 
-    if (player2Client) {
-      player2Client.send(json);
-    } else {
-      console.error('Didnt find player1Client');
-    }
+      console.log((client as WithUserIndex).userIndex)
+
+      const data: CreateGameResponseData = {idGame: id, idPlayer: (client as WithUserIndex).userIndex};
+      const message: Message = {type: 'create_game', id: 0, data: JSON.stringify(data)};
+      client.send(JSON.stringify(message));
+    });
   }
 
   private findClient(index: number): WebSocket.WebSocket | undefined {
@@ -274,6 +271,24 @@ export class GameServer {
   }
 
   private startGame(gameIndex: number): void {
-    this.games[gameIndex].f
+    this.games[gameIndex].players.forEach(player => {
+      const client = this.findClient(player.index);
+      if (!client) {
+        throw Error('startGame: WS Client not found');
+      }
+
+      const data: StartGameResponse = {
+        currentPlayerIndex: player.index,
+        ships: player.ships
+      };
+
+      const message: Message = {
+        id: 0,
+        type: 'start_game',
+        data: JSON.stringify(data)
+      };
+
+      client.send(JSON.stringify(message));
+    });
   }
 }
