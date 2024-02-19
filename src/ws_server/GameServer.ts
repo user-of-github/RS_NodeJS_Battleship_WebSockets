@@ -1,17 +1,8 @@
 import WebSocket from 'ws';
-import {
-  AddToRoomData,
-  AuthData,
-  CreateGameResponseData,
-  Game,
-  Message,
-  RegResponseData,
-  Room,
-  User,
-  WithId,
-  WithUserIndex
-} from './types';
+import {WithId, WithUserIndex } from './types/utility';
 import { uuidv4 } from './utils';
+import {AddToRoomData, AuthData, Game, Room, User} from './types/domain';
+import {AddShipsRequestData, CreateGameResponseData, Message, RegResponseData} from './types/Messages';
 
 
 export class GameServer {
@@ -78,11 +69,18 @@ export class GameServer {
         }
         case 'add_user_to_room': {
           const data: AddToRoomData = JSON.parse(messageRawParsed.data);
-          console.log(data)
           const roomIndex = this.addToRoom(client as WithUserIndex, data);
           this.sendFreeRooms();
           this.createGame(roomIndex);
 
+          break;
+        }
+        case 'add_ships': {
+          const data: AddShipsRequestData = JSON.parse(messageRawParsed.data);
+          const gameIndex = this.addShips(data);
+          if (this.games[gameIndex].players.every(p => p.ships.length !== 0)) {
+            this.startGame(gameIndex);
+          }
           break;
         }
       }
@@ -213,7 +211,16 @@ export class GameServer {
     const player1 = this.rooms[roomIndex].roomUsers[0].index;
     const player2 = this.rooms[roomIndex].roomUsers[1].index;
 
-    this.games.push({id, player1, player2});
+    this.games.push({
+      id,
+      players: [{
+        index: player1,
+        ships: []
+      }, {
+        index: player2,
+        ships: []
+      }]
+    });
 
     const data: CreateGameResponseData = {
       idGame: id,
@@ -246,4 +253,27 @@ export class GameServer {
     return [...this.webSocketServer.clients.values()].find(ws => (ws as WithUserIndex).userIndex === index);
   }
 
+  private addShips(data: AddShipsRequestData): number {
+    const gameIndex = this.games.findIndex(game => game.id === data.gameId);
+
+    if (gameIndex < 0) {
+      console.error(`Game with id ${data.gameId} not found`);
+      throw Error();
+    }
+
+    const playerIndex = this.games[gameIndex].players.findIndex(p => p.index === data.indexPlayer);
+
+    if (playerIndex < 0) {
+      console.error(`addShips: Player with id ${data.indexPlayer} not found`);
+      throw Error();
+    }
+
+    this.games[gameIndex].players[playerIndex].ships.push(...data.ships);
+
+    return gameIndex;
+  }
+
+  private startGame(gameIndex: number): void {
+    this.games[gameIndex].f
+  }
 }
