@@ -8,9 +8,13 @@
         "lint:format": "npx eslint . --config eslint.config.js --fix",
         "lint": "npx eslint . --config eslint.config.js"
     },
+    "engines": {
+        "node": ">=20.0.0"
+    },
     "author": {
         "name": "Slutski Mikita",
-        "url": "https://github.com/user-of-github"
+        "url": "https://github.com/user-of-github",
+        "email": "nikitosminsk100@gmail.com, slutski.mikita@gmail.com"
     },
     "keywords": [],
     "license": "ISC",
