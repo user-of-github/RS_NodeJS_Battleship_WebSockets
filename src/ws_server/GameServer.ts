@@ -1,7 +1,17 @@
 import WebSocket from 'ws';
 import {WithId, WithUserIndex } from './types/utility';
 import { uuidv4 } from './utils';
-import {AddToRoomData, AttackStatus, AuthData, Game, PlayerInGame, Room, User} from './types/domain';
+import {
+  AddToRoomData,
+  AttackResult,
+  AttackStatus,
+  AuthData,
+  Game,
+  PlayerInGame, Position,
+  Room,
+  Ship,
+  User
+} from './types/domain';
 import {
   AddShipsRequestData, AttackRequestData, AttackResponseData,
   CreateGameResponseData, CurrentTurnResponse,
@@ -9,6 +19,7 @@ import {
   RegResponseData,
   StartGameResponse
 } from './types/Messages';
+import {BOARD_SIZE} from './constants';
 
 
 export class GameServer {
@@ -19,6 +30,7 @@ export class GameServer {
   private readonly users: User[] = [];
   private readonly rooms: Room[] = [];
   private readonly games: Game[] = [];
+
   private webSocketServer!: WebSocket.Server;
   private isStarted: boolean = false;
 
@@ -41,6 +53,10 @@ export class GameServer {
 
     this.isStarted = true;
 
+    this.rooms.length = 0;
+    this.users.length = 0;
+    this.games.length = 0;
+
     this.webSocketServer.on('connection', (client: WebSocket.WebSocket): void => {
       const id = uuidv4();
 
@@ -57,6 +73,11 @@ export class GameServer {
       client.on('close', () => {
         this.removeUserAndItsData(client);
       });
+    });
+
+    this.webSocketServer.on('close', () => {
+      console.log('WS Server closed');
+      this.clearServer();
     });
   }
 
@@ -100,6 +121,10 @@ export class GameServer {
           const data: AttackRequestData = JSON.parse(messageRawParsed.data);
           const attackResult = this.attack(data);
           if (attackResult) {
+            if (attackResult.status === 'killed' && attackResult.damagedShip) {
+              this.setMissStateAfterShipKill(attackResult.gameIndex, attackResult.damagedShip);
+              break;
+            }
             if (attackResult.status === 'miss') {
               this.switchTurn(attackResult.gameIndex);
             }
@@ -236,7 +261,6 @@ export class GameServer {
 
     console.log(`creating game ${roomIndex}; With players: ${player1} (creator) and ${player2} (added himself (herself))`);
 
-
     this.games.push({
       id,
       players: [{
@@ -250,7 +274,6 @@ export class GameServer {
       }],
       turn: player1
     });
-
 
     [player1, player2].forEach(player => {
       const client = this.findClient(player);
@@ -272,15 +295,13 @@ export class GameServer {
     const gameIndex = this.games.findIndex(game => game.id === data.gameId);
 
     if (gameIndex < 0) {
-      console.error(`Game with id ${data.gameId} not found`);
-      throw Error();
+      throw Error(`Game with id ${data.gameId} not found`);
     }
 
     const playerIndex = this.games[gameIndex].players.findIndex(p => p.index === data.indexPlayer);
 
     if (playerIndex < 0) {
-      console.error(`addShips: Player with id ${data.indexPlayer} not found`);
-      throw Error();
+      throw Error(`addShips: Player with id ${data.indexPlayer} not found`);
     }
 
     this.games[gameIndex].players[playerIndex].ships.push(...data.ships.map(ship => ({
@@ -313,7 +334,7 @@ export class GameServer {
     });
   }
 
-  private attack(data: AttackRequestData): null | { gameIndex: number, status: AttackStatus } {
+  private attack(data: AttackRequestData): null | AttackResult {
     const gameIndex = this.gameIndexById(data.gameId);
 
     if (gameIndex < 0) {
@@ -342,7 +363,12 @@ export class GameServer {
         throw Error('createGame: client not found');
       }
 
-      const attackResponseData: AttackResponseData = {position: {x: data.x, y: data.y}, status: attackStatus, currentPlayer: data.indexPlayer}; // TODO ? for every player its or just attackers id for both ?
+      const attackResponseData: AttackResponseData = {
+        position: {x: data.x, y: data.y},
+        status: attackStatus.status,
+        currentPlayer: data.indexPlayer
+      }; // TODO ? for every player its or just attackers id for both ?
+
       const message: Message = {type: 'attack', id: 0, data: JSON.stringify(attackResponseData)};
       client.send(JSON.stringify(message));
     });
@@ -352,10 +378,10 @@ export class GameServer {
       y: data.y
     });
 
-    return { gameIndex: gameIndex, status: attackStatus};
+    return { gameIndex: gameIndex, status: attackStatus.status, damagedShip: attackStatus.damagedShip};
   }
 
-  private detectAttackStatus(playerInGame: PlayerInGame, attackX: number, attackY: number): AttackStatus {
+  private detectAttackStatus(playerInGame: PlayerInGame, attackX: number, attackY: number): Omit<AttackResult, 'gameIndex'> {
     for (const ship of playerInGame.ships) {
       if (!(ship.position.x === attackX || ship.position.y === attackY)) {
         continue;
@@ -367,9 +393,9 @@ export class GameServer {
             ship.aliveCells[y - ship.position.y] = false;
 
             if (ship.aliveCells.every(cell => !cell)) {
-              return 'killed';
+              return {status: 'killed', damagedShip: ship};
             } else {
-              return 'shot';
+              return {status: 'shot', damagedShip: ship};
             }
           }
         }
@@ -379,16 +405,106 @@ export class GameServer {
             ship.aliveCells[x - ship.position.x] = false;
 
             if (ship.aliveCells.every(cell => !cell)) {
-              return 'killed';
+              return { status: 'killed', damagedShip: ship};
             } else {
-              return 'shot';
+              return { status: 'shot', damagedShip: ship};
             }
           }
         }
       }
     }
 
-    return 'miss';
+    return { status: 'miss'};
+  }
+
+  private setMissStateAfterShipKill(gameIndex: number, damagedShip: Ship): void {
+    const game = this.games[gameIndex];
+    const currentTurn = game.turn;
+    const enemyIndex: 0 | 1 = game.players[0].index === currentTurn ? 1 : 0;
+    const enemy = game.players[enemyIndex].index;
+
+    game.players.forEach(player => {
+      const client = this.findClient(player.index);
+
+      if (!client) {
+        throw Error('createGame: client not found');
+      }
+
+      const positions = this.generateMissesAroundKilledShip(game, damagedShip);
+
+      positions.forEach(position => {
+        const attackResponseData: AttackResponseData = {
+          position: {x: position.x, y: position.y},
+          status: 'miss',
+          currentPlayer: enemy
+        };
+
+        const message: Message = { type: 'attack', id: 0, data: JSON.stringify(attackResponseData)};
+
+        client.send(JSON.stringify(message));
+      });
+    });
+  }
+
+  private generateMissesAroundKilledShip(game: Game, ship: Ship): Position[] {
+    const positions: Position[] = [];
+    const isValidPosition = (position: Position) => {
+      return position.x >= 0 && position.x < BOARD_SIZE && position.y >= 0 && position.y < BOARD_SIZE;
+    };
+
+    if (ship.direction) { // vertical
+      let shipY = ship.position.y;
+      let shipX = ship.position.x;
+      // row before ship
+      for (let x = shipX - 1; x <= shipX + 1; ++x) {
+        if (isValidPosition({x, y: shipY - 1})) {
+          positions.push({x, y: shipY - 1});
+        }
+      }
+      // while ship
+      for (let y = shipY; y < shipY + ship.length; ++y) {
+        if (isValidPosition({y, x: shipX - 1})) {
+          positions.push({y, x: shipX - 1});
+        }
+
+        if (isValidPosition({y, x: shipX + 1})) {
+          positions.push({y, x: shipX + 1});
+        }
+      }
+      //row after ship
+      for (let x = shipX - 1; x <= shipX + 1; ++x) {
+        if (isValidPosition({x, y: shipY + ship.length})) {
+          positions.push({x, y: shipY + ship.length});
+        }
+      }
+    } else if (!ship.direction) { // horizontal
+      let shipY = ship.position.y;
+      let shipX = ship.position.x;
+      // col before ship
+      for (let y = shipY - 1; y <= shipY + 1; ++y) {
+        if (isValidPosition({y, x: shipX - 1})) {
+          positions.push({y, x: shipX - 1});
+        }
+      }
+      // while ship
+      for (let x = shipX; x < shipX + ship.length; ++x) {
+        if (isValidPosition({x, y: shipY - 1})) {
+          positions.push({x, y: shipY - 1});
+        }
+
+        if (isValidPosition({x, y: shipY + 1})) {
+          positions.push({x, y: shipY + 1});
+        }
+      }
+      //col after ship
+      for (let y = shipY - 1; y <= shipY + 1; ++y) {
+        if (isValidPosition({y, x: shipX + ship.length})) {
+          positions.push({y, x: shipX + ship.length});
+        }
+      }
+    }
+
+    return positions;
   }
 
   private gameIndexById(id: number) {
@@ -396,21 +512,22 @@ export class GameServer {
   }
 
   private switchTurn(gameIndex: number): void {
-    if (gameIndex === -1) {
+    if (gameIndex < 0) {
       return;
     }
+    const game = this.games[gameIndex];
 
-    const currentTurn = this.games[gameIndex].turn;
+    const currentTurn = game.turn;
     // Sorry for such if :)
-    if (currentTurn === this.games[gameIndex].players[0].index) {
-      this.games[gameIndex].turn = this.games[gameIndex].players[1].index;
-    } else if (currentTurn === this.games[gameIndex].players[1].index) {
-      this.games[gameIndex].turn = this.games[gameIndex].players[0].index;
+    if (currentTurn === game.players[0].index) {
+      game.turn = game.players[1].index;
+    } else if (currentTurn === game.players[1].index) {
+      game.turn = game.players[0].index;
     }
 
     const newTurn = this.games[gameIndex].turn;
 
-    this.games[gameIndex].players.forEach(player => {
+    game.players.forEach(player => {
       const client = this.findClient(player.index);
 
       if (!client) {
@@ -451,5 +568,12 @@ export class GameServer {
 
     this.updateWinners();
     this.sendFreeRooms();
+  }
+
+  private clearServer(): void {
+    this.rooms.length = 0;
+    this.users.length = 0;
+    this.games.length = 0;
+    this.isStarted = false;
   }
 }

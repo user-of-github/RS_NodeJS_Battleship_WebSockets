@@ -44,3 +44,9 @@ export interface Game {
 }
 
 export type AttackStatus = 'miss' | 'killed' | 'shot';
+
+export interface AttackResult {
+    gameIndex: number;
+    status: AttackStatus;
+    damagedShip?: Ship;
+}
