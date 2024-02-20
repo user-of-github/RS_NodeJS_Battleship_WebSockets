@@ -5,7 +5,8 @@
     "scripts": {
         "start": "tsx src/index.ts",
         "start:dev": "ts-node-dev src/index.ts",
-        "lint:format": "npx eslint . --config eslint.config.js --fix"
+        "lint:format": "npx eslint . --config eslint.config.js --fix",
+        "lint": "npx eslint . --config eslint.config.js"
     },
     "author": {
         "name": "Slutski Mikita",

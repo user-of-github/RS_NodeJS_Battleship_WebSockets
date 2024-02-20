@@ -32,11 +32,11 @@ export class GameServer {
     }
 
     this.webSocketServer = new WebSocket.Server({
-        port: this.port
-      },
-      () => {
-        console.log(`WebSockets server has just been started on port ${this.port}`);
-      }
+      port: this.port
+    },
+    () => {
+      console.log(`WebSockets server has just been started on port ${this.port}`);
+    }
     );
 
     this.isStarted = true;
@@ -55,7 +55,7 @@ export class GameServer {
       });
 
       client.on('close', () => {
-
+        this.removeUserAndItsData(client);
       });
     });
   }
@@ -90,13 +90,13 @@ export class GameServer {
           const data: AddShipsRequestData = JSON.parse(messageRawParsed.data);
           const gameIndex = this.addShips(data);
           if (this.games[gameIndex].players.every(p => p.ships.length !== 0)) {
-            console.log('STARTING GAME')
+            console.log('STARTING GAME');
             this.startGame(gameIndex);
             this.switchTurn(gameIndex);
           }
           break;
         }
-        case "attack": {
+        case 'attack': {
           const data: AttackRequestData = JSON.parse(messageRawParsed.data);
           const {gameIndex, status }= this.attack(data);
           if (status === 'miss') {
@@ -187,7 +187,7 @@ export class GameServer {
   }
 
   private addToRoom(client: WithUserIndex, data: AddToRoomData): number {
-     const { indexRoom } = data;
+    const { indexRoom } = data;
 
     const index = this.rooms.findIndex(r => r.roomId === indexRoom);
 
@@ -223,11 +223,11 @@ export class GameServer {
     };
     const stringifiedResponse = JSON.stringify(response);
 
-    this.webSocketServer.clients.forEach(client => client.send(stringifiedResponse))
+    this.webSocketServer.clients.forEach(client => client.send(stringifiedResponse));
   }
 
   private createGame(roomIndex: number) {
-    console.log(`creating game ${roomIndex}`)
+    console.log(`creating game ${roomIndex}`);
     const id = this.gamesIdCounter++;
     const player1 = this.rooms[roomIndex].roomUsers[0].index;
     const player2 = this.rooms[roomIndex].roomUsers[1].index;
@@ -245,17 +245,13 @@ export class GameServer {
     });
 
 
-    const player1Client = this.findClient(player1);
-    const player2Client = this.findClient(player2);
-
-    [player1Client, player2Client].forEach(client => {
+    [player1, player2].forEach(player => {
+      const client = this.findClient(player2);
       if (!client) {
         throw Error('createGame: client not found');
       }
 
-      console.log((client as WithUserIndex).userIndex)
-
-      const data: CreateGameResponseData = {idGame: id, idPlayer: (client as WithUserIndex).userIndex};
+      const data: CreateGameResponseData = {idGame: id, idPlayer: player === player1 ? player2 : player1 };
       const message: Message = {type: 'create_game', id: 0, data: JSON.stringify(data)};
       client.send(JSON.stringify(message));
     });
@@ -411,6 +407,32 @@ export class GameServer {
   }
 
   private removeUserAndItsData(client: WebSocket.WebSocket): void {
-    // TODO: to implement
+    const userIndex = (client as WithUserIndex).userIndex;
+
+    let index: number;
+
+    do {
+      index = this.rooms.findIndex(room => room.roomUsers.find(user => user.index === userIndex));
+      if (index >= 0) {
+        this.rooms.splice(index, 1);
+      }
+    } while (index >= 0);
+
+    do {
+      index = this.games.findIndex(game => game.players.find(user => user.index === userIndex));
+      if (index >= 0) {
+        this.games.splice(index, 1);
+      }
+    } while (index >= 0);
+
+    do {
+      index = this.users.findIndex(user => user.index === userIndex);
+      if (index >= 0) {
+        this.users.splice(index, 1);
+      }
+    } while (index >= 0);
+
+    this.updateWinners();
+    this.sendFreeRooms();
   }
 }

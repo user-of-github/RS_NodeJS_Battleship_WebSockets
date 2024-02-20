@@ -8,11 +8,11 @@ module.exports = [{
     '@stylistic/ts': stylisticTs
   },
   files: [
-    './src/**/*.js',
-    './src/**/*.cjs',
-    './src/**/*.mjs',
-    './src/**/*.ts',
-    './src/**/*.tsx',
+    '**/*.js',
+    '**/*.cjs',
+    '**/*.mjs',
+    '**/*.ts',
+    '**/*.tsx',
     './index.ts'
   ],
   languageOptions: {
@@ -24,13 +24,13 @@ module.exports = [{
     }],
     quotes: ['error', 'single'],
     semi: ['error', 'always'],
-    '@stylistic/ts/max-len': ["error", { "code": 125 }],
-    'max-len': ["error", { "code": 125 }],
+    'max-len': ['warn', { code: 130, tabWidth: 2 }]
   },
 
   ignores: [
     'build/*',
     'node_modules/*',
-    'eslint.config.js'
+    'eslint.config.js',
+      'front/*'
   ]
 }];
