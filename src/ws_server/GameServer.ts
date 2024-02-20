@@ -81,6 +81,7 @@ export class GameServer {
         case 'add_user_to_room': {
           const data: AddToRoomData = JSON.parse(messageRawParsed.data);
           const roomIndex = this.addToRoom(client as WithUserIndex, data);
+          console.log(this.rooms[roomIndex]);
           this.sendFreeRooms();
           this.createGame(roomIndex);
 
@@ -105,8 +106,8 @@ export class GameServer {
           break;
         }
       }
-    } catch {
-
+    } catch (error) {
+      console.error(error);
     }
   }
 
@@ -197,7 +198,7 @@ export class GameServer {
 
     const { userIndex } = client;
 
-    if (!userIndex) {
+    if (userIndex === undefined) {
       throw Error('NOT FOUND');
     }
 
@@ -227,10 +228,12 @@ export class GameServer {
   }
 
   private createGame(roomIndex: number) {
-    console.log(`creating game ${roomIndex}`);
     const id = this.gamesIdCounter++;
     const player1 = this.rooms[roomIndex].roomUsers[0].index;
     const player2 = this.rooms[roomIndex].roomUsers[1].index;
+
+    console.log(`creating game ${roomIndex}; With players: ${player1} (creator) and ${player2} (added himself (herself))`);
+
 
     this.games.push({
       id,
@@ -246,12 +249,12 @@ export class GameServer {
 
 
     [player1, player2].forEach(player => {
-      const client = this.findClient(player2);
+      const client = this.findClient(player);
       if (!client) {
         throw Error('createGame: client not found');
       }
 
-      const data: CreateGameResponseData = {idGame: id, idPlayer: player === player1 ? player2 : player1 };
+      const data: CreateGameResponseData = {idGame: id, idPlayer: player };
       const message: Message = {type: 'create_game', id: 0, data: JSON.stringify(data)};
       client.send(JSON.stringify(message));
     });
