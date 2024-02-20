@@ -81,7 +81,6 @@ export class GameServer {
         case 'add_user_to_room': {
           const data: AddToRoomData = JSON.parse(messageRawParsed.data);
           const roomIndex = this.addToRoom(client as WithUserIndex, data);
-          console.log(this.rooms[roomIndex]);
           this.sendFreeRooms();
           this.createGame(roomIndex);
 
@@ -99,10 +98,13 @@ export class GameServer {
         }
         case 'attack': {
           const data: AttackRequestData = JSON.parse(messageRawParsed.data);
-          const {gameIndex, status }= this.attack(data);
-          if (status === 'miss') {
-            this.switchTurn(gameIndex);
+          const attackResult = this.attack(data);
+          if (attackResult) {
+            if (attackResult.status === 'miss') {
+              this.switchTurn(attackResult.gameIndex);
+            }
           }
+
           break;
         }
       }
@@ -239,10 +241,12 @@ export class GameServer {
       id,
       players: [{
         index: player1,
-        ships: []
+        ships: [],
+        attacks: []
       }, {
         index: player2,
-        ships: []
+        ships: [],
+        attacks: []
       }],
       turn: player1
     });
@@ -309,7 +313,7 @@ export class GameServer {
     });
   }
 
-  private attack(data: AttackRequestData): { gameIndex: number, status: AttackStatus } {
+  private attack(data: AttackRequestData): null | { gameIndex: number, status: AttackStatus } {
     const gameIndex = this.gameIndexById(data.gameId);
 
     if (gameIndex < 0) {
@@ -317,12 +321,18 @@ export class GameServer {
     }
 
     if (data.indexPlayer !== this.games[gameIndex].turn) {
-      return { gameIndex: gameIndex, status: 'miss'};
+      return null;
     }
 
     const game = this.games[gameIndex];
 
-    const enemyIndex = game.players[0].index === data.indexPlayer ? 1 : 0;
+    const enemyIndex: 0 | 1 = game.players[0].index === data.indexPlayer ? 1 : 0;
+    const selfIndex: 0 | 1 = game.players[0].index === data.indexPlayer ? 0 : 1;
+
+    if (game.players[selfIndex].attacks.find(a => a.y === data.y && a.x === data.x)) {
+      return null;
+    }
+
     const attackStatus = this.detectAttackStatus(game.players[enemyIndex], data.x, data.y);
 
     game.players.forEach(player => {
@@ -337,6 +347,10 @@ export class GameServer {
       client.send(JSON.stringify(message));
     });
 
+    this.games[gameIndex].players[selfIndex].attacks.push({
+      x: data.x,
+      y: data.y
+    });
 
     return { gameIndex: gameIndex, status: attackStatus};
   }

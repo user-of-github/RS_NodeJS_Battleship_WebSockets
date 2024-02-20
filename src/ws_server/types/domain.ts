@@ -35,6 +35,7 @@ export interface Ship {
 export interface PlayerInGame {
     readonly index: number;
     ships: Ship[];
+    attacks: Position[];
 }
 export interface Game {
     readonly id: number;
