@@ -41,6 +41,7 @@ export interface Game {
     readonly id: number;
     readonly players: [PlayerInGame, PlayerInGame];
     turn: number;
+    isFinished: boolean;
 }
 
 export type AttackStatus = 'miss' | 'killed' | 'shot';

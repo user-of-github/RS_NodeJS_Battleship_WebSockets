@@ -138,7 +138,7 @@ export class GameServer {
 
     let tryFind = this.users.find(u => GameServer.getUserPk(u.name, u.password) === userPk);
 
-    if (!this.users.find(u => GameServer.getUserPk(u.name, u.password) === userPk)) {
+    if (!tryFind) {
       const newUser: User = {
         ...messageData,
         index: this.usersIdCounter++,
@@ -243,7 +243,9 @@ export class GameServer {
       id: 0
     };
 
-    this.webSocketServer.clients.forEach(client => client.send(JSON.stringify(response)));
+    this.webSocketServer.clients.forEach(client => {
+      client.send(JSON.stringify(response));
+    });
   }
 
   private createGame(roomIndex: number) {
@@ -269,7 +271,8 @@ export class GameServer {
         ships: [],
         attacks: []
       }],
-      turn: player1
+      turn: player1,
+      isFinished: false
     });
 
     [player1, player2].forEach(player => {
@@ -587,14 +590,8 @@ export class GameServer {
     do {
       index = this.games.findIndex(game => game.players.find(user => user.index === userIndex));
       if (index >= 0) {
+        this.finishGame(index, true);
         this.games.splice(index, 1);
-      }
-    } while (index >= 0);
-
-    do {
-      index = this.users.findIndex(user => user.index === userIndex);
-      if (index >= 0) {
-        this.users.splice(index, 1);
       }
     } while (index >= 0);
 
@@ -623,12 +620,20 @@ export class GameServer {
     });
   }
 
-  private finishGame(gameIndex: number): void {
+  private finishGame(gameIndex: number, draw = false): void {
     const game = this.games[gameIndex];
 
-    const finishMessage: FinishGameResponseData = {winPlayer: game.turn};
+    if (game?.isFinished) {
+      return;
+    }
+
+    const winner = !draw ? game.turn : -1;
+
+    const finishMessage: FinishGameResponseData = {winPlayer: winner};
     const response: Message = { type: 'finish', data: JSON.stringify(finishMessage), id: 0};
     const responseString = JSON.stringify(response);
+
+    game.isFinished = true;
 
     game.players.forEach(player => {
       const client = this.findClient(player.index);
