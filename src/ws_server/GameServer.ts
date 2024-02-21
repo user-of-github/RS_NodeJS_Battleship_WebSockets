@@ -1,23 +1,16 @@
 import WebSocket from 'ws';
-import {WithId, WithUserIndex } from './types/utility';
-import { uuidv4 } from './utils';
+import {WithId, WithUserIndex} from './types/utility';
+import {uuidv4} from './utils';
+import {AddToRoomData, AttackResult, AuthData, Game, PlayerInGame, Position, Room, Ship, User} from './types/domain';
 import {
-  AddToRoomData,
-  AttackResult,
-  AttackStatus,
-  AuthData,
-  Game,
-  PlayerInGame, Position,
-  Room,
-  Ship,
-  User
-} from './types/domain';
-import {
-  AddShipsRequestData, AttackRequestData, AttackResponseData,
-  CreateGameResponseData, CurrentTurnResponse,
+  AddShipsRequestData,
+  AttackRequestData,
+  AttackResponseData,
+  CreateGameResponseData,
+  CurrentTurnResponseData, FinishGameResponseData,
   Message,
   RegResponseData,
-  StartGameResponse
+  StartGameResponseData
 } from './types/Messages';
 import {BOARD_SIZE} from './constants';
 
@@ -43,12 +36,9 @@ export class GameServer {
       return;
     }
 
-    this.webSocketServer = new WebSocket.Server({
-      port: this.port
-    },
-    () => {
-      console.log(`WebSockets server has just been started on port ${this.port}`);
-    }
+    this.webSocketServer = new WebSocket.Server(
+      {port: this.port},
+      () => console.log(`WebSockets server has just been started on port ${this.port}`)
     );
 
     this.isStarted = true;
@@ -123,6 +113,12 @@ export class GameServer {
           if (attackResult) {
             if (attackResult.status === 'killed' && attackResult.damagedShip) {
               this.setMissStateAfterShipKill(attackResult.gameIndex, attackResult.damagedShip);
+
+              if (this.didCurrentPlayerWin(attackResult.gameIndex)) {
+                this.addWinToUser(this.games[attackResult.gameIndex].turn);
+                this.finishGame(attackResult.gameIndex);
+                this.updateWinners();
+              }
               break;
             }
             if (attackResult.status === 'miss') {
@@ -186,17 +182,14 @@ export class GameServer {
       name, wins
     }));
 
-    const responseUpdate: Message = {
+    const response: Message = {
       type: 'update_winners',
       data: JSON.stringify(responseUpdateData),
       id: 0
     };
+    const responseString = JSON.stringify(response);
 
-    const stringified = JSON.stringify(responseUpdate);
-
-    this.webSocketServer.clients.forEach(client => {
-      client.send(stringified);
-    });
+    this.webSocketServer.clients.forEach(client => client.send(responseString));
   }
 
   private createRoom(client: WithUserIndex): void {
@@ -232,7 +225,11 @@ export class GameServer {
     const currentUser = this.users.find(u => u.index === client.userIndex);
 
     if (!currentUser) {
-      throw Error('NOT FOUND');
+      throw Error('addToRoom: current user NOT FOUND');
+    }
+
+    if (this.rooms[index].roomUsers[0].index === currentUser.index) {
+      return index; // can not add himself to his own room again
     }
 
     this.rooms[index].roomUsers.push({
@@ -245,19 +242,24 @@ export class GameServer {
 
   private sendFreeRooms(): void {
     const free = this.rooms.filter(r => r.roomUsers.length === 1);
-    const stringified = JSON.stringify(free);
     const response: Message = {
-      type: 'update_room', data: stringified, id: 0
+      type: 'update_room',
+      data: JSON.stringify(free),
+      id: 0
     };
-    const stringifiedResponse = JSON.stringify(response);
 
-    this.webSocketServer.clients.forEach(client => client.send(stringifiedResponse));
+    this.webSocketServer.clients.forEach(client => client.send(JSON.stringify(response)));
   }
 
   private createGame(roomIndex: number) {
+    const room = this.rooms[roomIndex];
+    if (room.roomUsers.length !== 2) {
+      return;
+    }
+
     const id = this.gamesIdCounter++;
-    const player1 = this.rooms[roomIndex].roomUsers[0].index;
-    const player2 = this.rooms[roomIndex].roomUsers[1].index;
+    const player1 = room.roomUsers[0].index;
+    const player2 = room.roomUsers[1].index;
 
     console.log(`creating game ${roomIndex}; With players: ${player1} (creator) and ${player2} (added himself (herself))`);
 
@@ -319,7 +321,7 @@ export class GameServer {
         throw Error('startGame: WS Client not found');
       }
 
-      const data: StartGameResponse = {
+      const data: StartGameResponseData = {
         currentPlayerIndex: player.index,
         ships: player.ships
       };
@@ -356,6 +358,15 @@ export class GameServer {
 
     const attackStatus = this.detectAttackStatus(game.players[enemyIndex], data.x, data.y);
 
+    const attackResponseData: AttackResponseData = {
+      position: {x: data.x, y: data.y},
+      status: attackStatus.status,
+      currentPlayer: data.indexPlayer
+    }; // TODO ? for every player its or just attackers id for both ?
+
+    const response: Message = {type: 'attack', id: 0, data: JSON.stringify(attackResponseData)};
+    const responseString = JSON.stringify(response);
+
     game.players.forEach(player => {
       const client = this.findClient(player.index);
 
@@ -363,14 +374,7 @@ export class GameServer {
         throw Error('createGame: client not found');
       }
 
-      const attackResponseData: AttackResponseData = {
-        position: {x: data.x, y: data.y},
-        status: attackStatus.status,
-        currentPlayer: data.indexPlayer
-      }; // TODO ? for every player its or just attackers id for both ?
-
-      const message: Message = {type: 'attack', id: 0, data: JSON.stringify(attackResponseData)};
-      client.send(JSON.stringify(message));
+      client.send(responseString);
     });
 
     this.games[gameIndex].players[selfIndex].attacks.push({
@@ -378,7 +382,11 @@ export class GameServer {
       y: data.y
     });
 
-    return { gameIndex: gameIndex, status: attackStatus.status, damagedShip: attackStatus.damagedShip};
+    return {
+      gameIndex: gameIndex,
+      status: attackStatus.status,
+      damagedShip: attackStatus.damagedShip
+    };
   }
 
   private detectAttackStatus(playerInGame: PlayerInGame, attackX: number, attackY: number): Omit<AttackResult, 'gameIndex'> {
@@ -420,8 +428,16 @@ export class GameServer {
   private setMissStateAfterShipKill(gameIndex: number, damagedShip: Ship): void {
     const game = this.games[gameIndex];
     const currentTurn = game.turn;
-    const enemyIndex: 0 | 1 = game.players[0].index === currentTurn ? 1 : 0;
-    const enemy = game.players[enemyIndex].index;
+    const playerIndexInGameArray = game.players.findIndex(player => player.index === currentTurn);
+
+    if (playerIndexInGameArray < 0) {
+      throw new Error('setMissStateAfterShipKill: can not find player by his turn');
+    }
+
+    const self = game.players[playerIndexInGameArray].index;
+
+    const positions = this.generateMissesAroundKilledShip(damagedShip);
+    game.players[playerIndexInGameArray].attacks.push(...positions);
 
     game.players.forEach(player => {
       const client = this.findClient(player.index);
@@ -430,13 +446,11 @@ export class GameServer {
         throw Error('createGame: client not found');
       }
 
-      const positions = this.generateMissesAroundKilledShip(game, damagedShip);
-
       positions.forEach(position => {
         const attackResponseData: AttackResponseData = {
           position: {x: position.x, y: position.y},
           status: 'miss',
-          currentPlayer: enemy
+          currentPlayer: self
         };
 
         const message: Message = { type: 'attack', id: 0, data: JSON.stringify(attackResponseData)};
@@ -446,7 +460,7 @@ export class GameServer {
     });
   }
 
-  private generateMissesAroundKilledShip(game: Game, ship: Ship): Position[] {
+  private generateMissesAroundKilledShip(ship: Ship): Position[] {
     const positions: Position[] = [];
     const isValidPosition = (position: Position) => {
       return position.x >= 0 && position.x < BOARD_SIZE && position.y >= 0 && position.y < BOARD_SIZE;
@@ -527,6 +541,10 @@ export class GameServer {
 
     const newTurn = this.games[gameIndex].turn;
 
+    const responseData: CurrentTurnResponseData = {currentPlayer: newTurn};
+    const response: Message = {type: 'turn', id: 0, data: JSON.stringify(responseData)};
+    const responseString = JSON.stringify(response);
+
     game.players.forEach(player => {
       const client = this.findClient(player.index);
 
@@ -534,9 +552,7 @@ export class GameServer {
         throw Error('createGame: client not found');
       }
 
-      const turnResponseData: CurrentTurnResponse = {currentPlayer: newTurn};
-      const message: Message = {type: 'turn', id: 0, data: JSON.stringify(turnResponseData)};
-      client.send(JSON.stringify(message));
+      client.send(JSON.stringify(responseString));
     });
   }
 
@@ -575,5 +591,46 @@ export class GameServer {
     this.users.length = 0;
     this.games.length = 0;
     this.isStarted = false;
+  }
+
+  private didCurrentPlayerWin(gameIndex: number): boolean {
+    const game = this.games[gameIndex];
+    const currentPlayerIndexInArray = game.players.findIndex(player => player.index === game.turn);
+    const enemyIndexInArray = (currentPlayerIndexInArray + 1) % 2;
+
+    if (currentPlayerIndexInArray < 0) {
+      throw Error('didCurrentPlayerWin: current player not found');
+    }
+
+    return game.players[enemyIndexInArray].ships.every(ship => {
+      return ship.aliveCells.every(cell => !cell);
+    });
+  }
+
+  private finishGame(gameIndex: number): void {
+    const game = this.games[gameIndex];
+
+    const finishMessage: FinishGameResponseData = {winPlayer: game.turn};
+    const response: Message = { type: 'finish', data: JSON.stringify(finishMessage), id: 0};
+    const responseString = JSON.stringify(response);
+
+    game.players.forEach(player => {
+      const client = this.findClient(player.index);
+      if (!client) {
+        return;
+      }
+
+      client.send(responseString);
+    });
+  }
+
+  private addWinToUser(userId: number): void {
+    const user = this.users.find(user => user.index === userId);
+
+    if (!user) {
+      throw Error(`addWinToUser: user ${userId} does not exist`);
+    }
+
+    ++user.wins;
   }
 }

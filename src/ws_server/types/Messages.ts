@@ -1,7 +1,19 @@
 import {AttackStatus, Position, Ship, User} from './domain';
 
 
-export type MessageType = 'reg' | 'create_room' | 'add_user_to_room' | 'create_game' | 'add_ships' | 'start_game' | 'turn' | 'attack' | 'randomAttack' | 'finish' | 'update_room' | 'update_winners';
+export type MessageType =
+    'reg'
+    | 'create_room'
+    | 'add_user_to_room'
+    | 'create_game'
+    | 'add_ships'
+    | 'start_game'
+    | 'turn'
+    | 'attack'
+    | 'randomAttack'
+    | 'finish'
+    | 'update_room'
+    | 'update_winners';
 
 export interface Message {
     readonly type: MessageType;
@@ -25,7 +37,7 @@ export interface AddShipsRequestData {
     readonly indexPlayer: number;
 }
 
-export interface StartGameResponse {
+export interface StartGameResponseData {
     readonly ships: Ship[];
     readonly currentPlayerIndex: number;
 }
@@ -40,10 +52,14 @@ export interface AttackRequestData {
 export interface AttackResponseData {
     readonly position: Position;
     readonly currentPlayer: number;
-    status: AttackStatus;
+    readonly status: AttackStatus;
 }
 
 
-export interface CurrentTurnResponse {
+export interface CurrentTurnResponseData {
     readonly currentPlayer: number;
+}
+
+export interface FinishGameResponseData {
+    readonly winPlayer: number;
 }
