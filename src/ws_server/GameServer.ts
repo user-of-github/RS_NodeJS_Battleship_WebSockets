@@ -1,6 +1,6 @@
 import WebSocket from 'ws';
 import {WithId, WithUserIndex} from './types/utility';
-import {uuidv4} from './utils';
+import {getRandomIntInRange, uuidv4} from './utils';
 import {AddToRoomData, AttackResult, AuthData, Game, PlayerInGame, Position, Room, Ship, User} from './types/domain';
 import {
   AddShipsRequestData,
@@ -8,7 +8,7 @@ import {
   AttackResponseData,
   CreateGameResponseData,
   CurrentTurnResponseData, FinishGameResponseData,
-  Message,
+  Message, RandomRequestData,
   RegResponseData,
   StartGameResponseData
 } from './types/Messages';
@@ -74,7 +74,7 @@ export class GameServer {
   private processClientMessage(client: WebSocket.WebSocket, message: WebSocket.RawData): void {
     try {
       const messageRawParsed: Message = JSON.parse(message.toString());
-      console.log(messageRawParsed);
+      //console.log(messageRawParsed);
 
       switch (messageRawParsed.type) {
         case 'reg': {
@@ -109,23 +109,18 @@ export class GameServer {
         }
         case 'attack': {
           const data: AttackRequestData = JSON.parse(messageRawParsed.data);
-          const attackResult = this.attack(data);
-          if (attackResult) {
-            if (attackResult.status === 'killed' && attackResult.damagedShip) {
-              this.setMissStateAfterShipKill(attackResult.gameIndex, attackResult.damagedShip);
-
-              if (this.didCurrentPlayerWin(attackResult.gameIndex)) {
-                this.addWinToUser(this.games[attackResult.gameIndex].turn);
-                this.finishGame(attackResult.gameIndex);
-                this.updateWinners();
-              }
-              break;
-            }
-            if (attackResult.status === 'miss') {
-              this.switchTurn(attackResult.gameIndex);
-            }
-          }
-
+          this.attack(data);
+          break;
+        }
+        case 'randomAttack': {
+          const data: RandomRequestData = JSON.parse(messageRawParsed.data);
+          const randomPosition = this.generateRandomAttackPosition(data);
+          const fullAttackData: AttackRequestData = {...randomPosition, ...data};
+          this.attack(fullAttackData);
+          break;
+        }
+        default: {
+          console.warn('Received unknown request type');
           break;
         }
       }
@@ -336,7 +331,25 @@ export class GameServer {
     });
   }
 
-  private attack(data: AttackRequestData): null | AttackResult {
+  private attack(data: AttackRequestData): void {
+    const attackResult = this.shootAtShip(data);
+    if (attackResult) {
+      if (attackResult.status === 'killed' && attackResult.damagedShip) {
+        this.setMissStateAfterShipKill(attackResult.gameIndex, attackResult.damagedShip);
+
+        if (this.didCurrentPlayerWin(attackResult.gameIndex)) {
+          this.addWinToUser(this.games[attackResult.gameIndex].turn);
+          this.finishGame(attackResult.gameIndex);
+          this.updateWinners();
+        }
+        return;
+      }
+
+      this.switchTurn(attackResult.gameIndex, attackResult.status !== 'miss');
+    }
+  }
+
+  private shootAtShip(data: AttackRequestData): null | AttackResult {
     const gameIndex = this.gameIndexById(data.gameId);
 
     if (gameIndex < 0) {
@@ -525,18 +538,21 @@ export class GameServer {
     return this.games.findIndex(game => game.id === id);
   }
 
-  private switchTurn(gameIndex: number): void {
+  private switchTurn(gameIndex: number, skipSwitching: boolean = false): void {
     if (gameIndex < 0) {
       return;
     }
     const game = this.games[gameIndex];
 
     const currentTurn = game.turn;
-    // Sorry for such if :)
-    if (currentTurn === game.players[0].index) {
-      game.turn = game.players[1].index;
-    } else if (currentTurn === game.players[1].index) {
-      game.turn = game.players[0].index;
+
+    if (!skipSwitching) {
+      // Sorry for such if :)
+      if (currentTurn === game.players[0].index) {
+        game.turn = game.players[1].index;
+      } else if (currentTurn === game.players[1].index) {
+        game.turn = game.players[0].index;
+      }
     }
 
     const newTurn = this.games[gameIndex].turn;
@@ -552,7 +568,7 @@ export class GameServer {
         throw Error('createGame: client not found');
       }
 
-      client.send(JSON.stringify(responseString));
+      client.send(responseString);
     });
   }
 
@@ -632,5 +648,36 @@ export class GameServer {
     }
 
     ++user.wins;
+  }
+
+  private generateRandomAttackPosition(data: RandomRequestData): Position {
+    const game = this.games.find(game => game.id === data.gameId);
+
+    if (!game) {
+      throw Error('generateRandomAttackPosition: game not found by id');
+    }
+
+    const player = game.players.find(player => player.index === data.indexPlayer);
+
+    if (!player) {
+      throw Error('generateRandomAttackPosition: player not found by id');
+    }
+
+    const wasPositionAlreadyUsed = (position: Position): boolean => {
+      return player.attacks.some(attack => attack.x === position.x && attack.y === position.y);
+    };
+
+    const maxCoordinate = BOARD_SIZE - 1;
+    const minCoordinate = 0;
+
+    let x: number = getRandomIntInRange(minCoordinate, maxCoordinate);
+    let y: number = getRandomIntInRange(minCoordinate, maxCoordinate);
+
+    while (wasPositionAlreadyUsed({x, y})) {
+      x = getRandomIntInRange(minCoordinate, maxCoordinate);
+      y = getRandomIntInRange(minCoordinate, maxCoordinate);
+    }
+
+    return {x, y};
   }
 }

@@ -49,6 +49,8 @@ export interface AttackRequestData {
     readonly indexPlayer: number;
 }
 
+export type RandomRequestData = Pick<AttackRequestData, 'gameId' | 'indexPlayer'>;
+
 export interface AttackResponseData {
     readonly position: Position;
     readonly currentPlayer: number;
