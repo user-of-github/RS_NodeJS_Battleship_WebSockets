@@ -147,6 +147,20 @@ export class GameServer {
 
       this.users.push(newUser);
       tryFind = newUser;
+    } else {
+      if (this.isUserAlreadyConnected(tryFind.index)) {
+        const responseRegData = {
+          error: true,
+          errorText: 'You already connected from another tab or browser or device'
+        };
+        const responseReg: Message = {
+          type: 'reg',
+          data: JSON.stringify(responseRegData),
+          id: 0
+        };
+        client.send(JSON.stringify(responseReg));
+        return;
+      }
     }
 
     const user = tryFind as User;
@@ -684,5 +698,13 @@ export class GameServer {
     }
 
     return {x, y};
+  }
+
+  private isUserAlreadyConnected(userId: number): boolean {
+    return [...this.webSocketServer.clients.values()].some(client => {
+      if (client.readyState === WebSocket.OPEN && (client as WithUserIndex).userIndex === userId) {
+        return true;
+      }
+    });
   }
 }
