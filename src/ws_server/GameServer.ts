@@ -136,9 +136,16 @@ export class GameServer {
   private processReg(messageData: AuthData, client: WebSocket.WebSocket): void {
     const userPk = GameServer.getUserPk(messageData.name, messageData.password);
 
-    let tryFind = this.users.find(u => GameServer.getUserPk(u.name, u.password) === userPk);
+    const sameLoginAndNotSamePass = this.users.find(u => u.name === messageData.name && u.password !== messageData.password);
 
-    if (!tryFind) {
+    if (sameLoginAndNotSamePass) {
+      this.sendNotValidPasswordResponse(client);
+      return;
+    }
+
+    let sameLoginAndPass = this.users.find(u => GameServer.getUserPk(u.name, u.password) === userPk);
+
+    if (!sameLoginAndPass) {
       const newUser: User = {
         ...messageData,
         index: this.usersIdCounter++,
@@ -146,24 +153,15 @@ export class GameServer {
       };
 
       this.users.push(newUser);
-      tryFind = newUser;
+      sameLoginAndPass = newUser;
     } else {
-      if (this.isUserAlreadyConnected(tryFind.index)) {
-        const responseRegData = {
-          error: true,
-          errorText: 'You already connected from another tab or browser or device'
-        };
-        const responseReg: Message = {
-          type: 'reg',
-          data: JSON.stringify(responseRegData),
-          id: 0
-        };
-        client.send(JSON.stringify(responseReg));
+      if (this.isUserAlreadyConnected(sameLoginAndPass.index)) {
+        this.sendAlreadyConnectedResponse(client);
         return;
       }
     }
 
-    const user = tryFind as User;
+    const user = sameLoginAndPass as User;
 
     const responseRegData: RegResponseData = {
       name: user.name,
@@ -706,5 +704,31 @@ export class GameServer {
         return true;
       }
     });
+  }
+
+  private sendAlreadyConnectedResponse(client: WebSocket.WebSocket): void {
+    const responseRegData = {
+      error: true,
+      errorText: 'You already connected from another tab or browser or device'
+    };
+    const responseReg: Message = {
+      type: 'reg',
+      data: JSON.stringify(responseRegData),
+      id: 0
+    };
+    client.send(JSON.stringify(responseReg));
+  }
+
+  private sendNotValidPasswordResponse(client: WebSocket.WebSocket) {
+    const responseRegData = {
+      error: true,
+      errorText: 'User with such login already exists, but password is not correct !'
+    };
+    const responseReg: Message = {
+      type: 'reg',
+      data: JSON.stringify(responseRegData),
+      id: 0
+    };
+    client.send(JSON.stringify(responseReg));
   }
 }
