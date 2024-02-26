@@ -176,6 +176,7 @@ export class GameServer {
       id: 0
     };
 
+    console.log('Message sent: processed reg request');
     (client as WithUserIndex).userIndex = user.index;
     client.send(JSON.stringify(responseReg));
   }
@@ -196,6 +197,7 @@ export class GameServer {
     };
     const responseString = JSON.stringify(response);
 
+    console.log('Message sent: updating winners');
     this.webSocketServer.clients.forEach(client => client.send(responseString));
   }
 
@@ -254,6 +256,8 @@ export class GameServer {
       data: JSON.stringify(free),
       id: 0
     };
+
+    console.log('Message sent: sending free rooms');
 
     this.webSocketServer.clients.forEach(client => {
       client.send(JSON.stringify(response));
@@ -325,6 +329,8 @@ export class GameServer {
   }
 
   private startGame(gameIndex: number): void {
+    console.log('Message sent: starting game');
+
     this.games[gameIndex].players.forEach(player => {
       const client = this.findClient(player.index);
       if (!client) {
@@ -395,6 +401,7 @@ export class GameServer {
     const response: Message = {type: 'attack', id: 0, data: JSON.stringify(attackResponseData)};
     const responseString = JSON.stringify(response);
 
+    console.log('Message sent: attack');
     game.players.forEach(player => {
       const client = this.findClient(player.index);
 
@@ -466,6 +473,8 @@ export class GameServer {
 
     const positions = this.generateMissesAroundKilledShip(damagedShip);
     game.players[playerIndexInGameArray].attacks.push(...positions);
+
+    console.log('Message sent: setting missed state after killed ship');
 
     game.players.forEach(player => {
       const client = this.findClient(player.index);
@@ -576,6 +585,8 @@ export class GameServer {
     const response: Message = {type: 'turn', id: 0, data: JSON.stringify(responseData)};
     const responseString = JSON.stringify(response);
 
+    console.log('Message sent: switching turn');
+
     game.players.forEach(player => {
       const client = this.findClient(player.index);
 
@@ -647,6 +658,8 @@ export class GameServer {
 
     game.isFinished = true;
 
+    console.log('Message sent: finishing game');
+
     game.players.forEach(player => {
       const client = this.findClient(player.index);
       if (!client) {
@@ -716,6 +729,7 @@ export class GameServer {
       data: JSON.stringify(responseRegData),
       id: 0
     };
+    console.log('Message sent: sending that user already connected from another tab/device');
     client.send(JSON.stringify(responseReg));
   }
 
@@ -729,6 +743,7 @@ export class GameServer {
       data: JSON.stringify(responseRegData),
       id: 0
     };
+    console.log('Message sent: sending not valid password info');
     client.send(JSON.stringify(responseReg));
   }
 }
