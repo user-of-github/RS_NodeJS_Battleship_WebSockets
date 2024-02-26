@@ -1,19 +1,34 @@
 {
     "name": "ws_task",
     "version": "1.0.0",
-    "description": "Template for the WebSocket remote control task",
-    "main": "index.js",
-    "type": "module",
+    "description": "WebSocket remote control task for RS NodeJS 2024Q1",
     "scripts": {
-        "start": "node ./index.js",
-        "start:dev": "nodemon ./index.js",
-        "test": "echo \"Error: no test specified\" && exit 1"
+        "start": "tsx src/index.ts",
+        "start:dev": "ts-node-dev src/index.ts",
+        "lint:format": "npx eslint . --config eslint.config.js --fix",
+        "lint": "npx eslint . --config eslint.config.js"
     },
-    "author": "Andrei Auchynnikau",
+    "engines": {
+        "node": ">=20.0.0"
+    },
+    "author": {
+        "name": "Slutski Mikita",
+        "url": "https://github.com/user-of-github",
+        "email": "nikitosminsk100@gmail.com, slutski.mikita@gmail.com"
+    },
     "keywords": [],
     "license": "ISC",
     "devDependencies": {
-        "nodemon": "^2.0.16"
+        "@stylistic/eslint-plugin-js": "^1.6.2",
+        "@stylistic/eslint-plugin-ts": "^1.6.2",
+        "@types/ws": "^8.5.10",
+        "@typescript-eslint/parser": "^7.0.1",
+        "eslint": "^8.56.0",
+        "nodemon": "^2.0.16",
+        "ts-node": "^10.9.2",
+        "ts-node-dev": "^2.0.0",
+        "tsx": "^4.7.1",
+        "typescript": "^5.3.3"
     },
     "dependencies": {
         "ws": "^8.8.0"
