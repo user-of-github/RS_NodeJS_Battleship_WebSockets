@@ -74,7 +74,7 @@ export class GameServer {
   private processClientMessage(client: WebSocket.WebSocket, message: WebSocket.RawData): void {
     try {
       const messageRawParsed: Message = JSON.parse(message.toString());
-      //console.log(messageRawParsed);
+      console.log('Message received:' , messageRawParsed.type);
 
       switch (messageRawParsed.type) {
         case 'reg': {
